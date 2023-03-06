@@ -1,0 +1,16 @@
+{
+    "name": "error-code-21610",
+    "version": "1.0.0",
+    "description": "",
+    "main": "app.mjs",
+    "repository": "",
+    "author": "",
+    "license": "MIT",
+    "dependencies": {    
+    },
+    "scripts": {
+    },
+    "devDependencies": {
+    }
+  }
+  

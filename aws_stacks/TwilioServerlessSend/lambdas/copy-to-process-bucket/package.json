@@ -1,0 +1,16 @@
+{
+    "name": "copy-to-process-bucket",
+    "version": "1.0.0",
+    "description": "",
+    "main": "app.mjs",
+    "repository": "",
+    "author": "",
+    "license": "MIT",
+    "dependencies": {    
+    },
+    "scripts": {
+    },
+    "devDependencies": {
+    }
+  }
+  

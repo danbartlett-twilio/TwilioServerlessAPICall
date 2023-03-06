@@ -1,0 +1,16 @@
+{
+    "name": "save-api-response-to-s3",
+    "version": "1.0.0",
+    "description": "",
+    "main": "app.mjs",
+    "repository": "",
+    "author": "",
+    "license": "MIT",
+    "dependencies": {    
+    },
+    "scripts": {
+    },
+    "devDependencies": {
+    }
+  }
+  

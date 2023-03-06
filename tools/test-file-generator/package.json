@@ -1,0 +1,12 @@
+{
+  "name": "generate-test-file",
+  "version": "1.0.0",
+  "description": "",
+  "main": "generate-test-file.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC"
+}

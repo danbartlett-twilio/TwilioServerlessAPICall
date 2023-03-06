@@ -1,0 +1,1 @@
+sam deploy --stack-name SaveAPIResponseToS3 --template template.yaml --profile YOUR-AWS-PROFILE

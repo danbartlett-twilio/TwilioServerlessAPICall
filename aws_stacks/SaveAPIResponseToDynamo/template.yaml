@@ -1,0 +1,130 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  SaveAPIResponseToDynamo
+
+  Creates DynamoDB Table and lambda function invoked by SNS topic to write items to dynamo.
+  
+
+Globals:
+  Function:
+    Timeout: 3
+
+Resources:
+
+  ##########################################################################
+  #  DynamoDB Table
+  #                          
+  #  Store all api responses in a database
+  ########################################################################## 
+  TwilioAPIResponseDynamoDBTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "TwilioAPIResponseDynamoDBTable-${AWS::AccountId}"
+      BillingMode: 'PAY_PER_REQUEST'
+      AttributeDefinitions:
+        -
+          AttributeName: "pk"
+          AttributeType: "S"
+        -
+          AttributeName: "sk"
+          AttributeType: "S"
+        -
+          AttributeName: "timestamp"
+          AttributeType: "N"          
+                 
+      KeySchema:
+        -
+          AttributeName: "pk"
+          KeyType: "HASH"
+        -
+          AttributeName: "sk"
+          KeyType: "RANGE"
+      GlobalSecondaryIndexes:
+        # String based index. Keys vary by type of item
+        -
+          IndexName: "sk_timestamp-index"
+          KeySchema:
+            -
+              AttributeName: "sk"
+              KeyType: "HASH"
+            -
+              AttributeName: "timestamp"
+              KeyType: "RANGE"
+          Projection:
+            ProjectionType: "ALL"
+
+  TwilioAPIResponseDynamoDBPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties: 
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - "dynamodb:PutItem"
+              - "dynamodb:UpdateItem"
+            Resource:             
+              - !GetAtt TwilioAPIResponseDynamoDBTable.Arn
+
+  ##########################################################################
+  #  Policy
+  #                          
+  #  Provide permission for SNS to invoke the Lambda function
+  ########################################################################## 
+  SNStoTwilioAPIResponsePutToDynamoFunctionPermission:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !Ref TwilioAPIResponsePutToDynamoFunction
+      Principal: sns.amazonaws.com
+
+  ##########################################################################
+  #  Lambda Function                            
+  #                          
+  #  This function receives messages from SNS topic and writes item
+  #  to DynamoDB table.
+  ##########################################################################
+  TwilioAPIResponsePutToDynamoFunction:
+    Type: AWS::Serverless::Function
+    Properties:      
+      Description: Lambda invoked by SNS topics, writes to DynamoDB
+      CodeUri: lambdas/save-to-dynamodb/
+      Handler: app.lambdaHandler
+      AutoPublishAlias: live
+      Runtime: nodejs18.x
+      Architectures:
+        - arm64
+      Role: !GetAtt TwilioAPIResponsePutToDynamoFunctionRole.Arn
+      Timeout: 3
+      MemorySize: 128
+      Environment:
+        Variables:
+          REGION: !Ref "AWS::Region"
+          TABLE_NAME: !Sub "TwilioAPIResponseDynamoDBTable-${AWS::AccountId}"
+      Events:
+        SNSEvent:
+          Type: SNS
+          Properties:            
+            Topic: !ImportValue 'TwilioAPICallResponseTopicARN'
+
+  ##########################################################################
+  #  Role for Lambda Function                            
+  #                          
+  #  Allow lambda function to write to DynamoDB.
+  ##########################################################################
+  TwilioAPIResponsePutToDynamoFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole    
+      ManagedPolicyArns:        
+        - !Ref TwilioAPIResponseDynamoDBPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole

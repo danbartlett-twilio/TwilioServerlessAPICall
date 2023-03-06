@@ -1,0 +1,549 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  TwilioServerlessSend Primary Stack  
+
+Parameters:
+  ##########################################################################
+  #  KEY SETTING ALERT!
+  #
+  #  Set your desired MPS, Messages Per Second, below!  
+  #  MPS and MPSNUM should be the same!
+  ##########################################################################
+  MPS:
+    Type: String
+    Default: '100'    
+  MPSNUM:
+    Type: Number
+    Default: '100'        
+
+Resources:
+
+  ##########################################################################
+  #  SQS Queue                 
+  #
+  #  This queue holds for messages waiting to be POSTed to Twilio API.
+  #  Dead Letter Queue holds any messages that fail to process.
+  ##########################################################################
+  TwilioMessageSendDeadLetterQueue:
+    Type: AWS::SQS::Queue  
+  
+  TwilioMessageSendQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: TwilioMessageSendQueue
+      # 30 is default value, value should be 6x of Send Lambda
+      VisibilityTimeout: 120
+      ##########################################################################
+      # Only try to send messages once! Failed messages are sent to a 
+      # dead letter queue. The expectations is that all messages should be
+      # processed with 1 attempt.
+      ##########################################################################
+      RedrivePolicy:
+        deadLetterTargetArn : !GetAtt TwilioMessageSendDeadLetterQueue.Arn
+        maxReceiveCount : 1          
+
+  ##########################################################################
+  #  Managed policy
+  #
+  #  Gives lambda holding this policy permission to send messages to 
+  #  SQS Queue.
+  ##########################################################################      
+  TwilioMessageSendQueueSendPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties: 
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - sqs:SendMessage
+            Resource: !GetAtt TwilioMessageSendQueue.Arn        
+
+  ##########################################################################
+  #  S3 Buckets
+  #                        
+  #  Each bucket has a managed policy that grants privs to lambdas.
+  #  
+  #  1) Source => data files (csv or json) loaded here for processing
+  #  2) Holding => json files held here before going to send queue.
+  #  3) Process => json files send here are immediately sent to send queue.
+  ########################################################################## 
+  TwilioServerlessSendSourceBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "twilio-serverless-send-source-${AWS::AccountId}-${AWS::Region}"  
+  TwilioServerlessSendSourceBucketPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties: 
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:GetObject
+              - s3:DeleteObject
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Sub "twilio-serverless-send-source-${AWS::AccountId}-${AWS::Region}"
+                - /*     
+  TwilioServerlessSendHoldingBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "twilio-serverless-send-holding-${AWS::AccountId}-${AWS::Region}"  
+  TwilioServerlessSendHoldingBucketPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties: 
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:GetObject
+              - s3:DeleteObject
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Sub "twilio-serverless-send-holding-${AWS::AccountId}-${AWS::Region}"
+                - /*
+  TwilioServerlessSendProcessBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "twilio-serverless-send-process-${AWS::AccountId}-${AWS::Region}"  
+  TwilioServerlessSendProcessBucketPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties: 
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:GetObject
+              - s3:DeleteObject
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Sub "twilio-serverless-send-process-${AWS::AccountId}-${AWS::Region}"
+                - /*                     
+
+  ##########################################################################
+  #  SNS Topic                 
+  #
+  #  All calls to Twilio API calls (success or fail) are sent to this topic 
+  #  for futher downstream processing.
+  ##########################################################################
+  TwilioAPICallResponseTopic:
+    Type: AWS::SNS::Topic
+
+  ##########################################################################
+  #  STEP FUNCTION
+  #
+  #  SQS queue can delay messages for up to 15 minutes (900 seconds). 
+  #  Depending on the MPS and the number of messages in the file, the original
+  #  file loaded into SOURCE can be broken into as many files as needed to
+  #  handle the quantity in 15 minute increments. The Step Function will 
+  #  one file every 905 seconds by moving from HOLDING to PROCESS bucket.
+  ##########################################################################
+  StateMachineProcessFiles15MinIncrements:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      DefinitionUri: statemachine/ManageFileProcessing.asl.json
+      DefinitionSubstitutions:
+        TwilioCopyToProcessBucketFunctionArn: !GetAtt TwilioCopyToProcessBucketFunction.Arn        
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - "cloudwatch:*"
+                - "logs:*"
+              Resource: "*"
+        - LambdaInvokePolicy:
+            FunctionName: !Ref TwilioCopyToProcessBucketFunction
+      Logging:
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt StateMachineProcessFiles15MinIncrementsLogGroup.Arn
+        IncludeExecutionData: true
+        Level: 'ALL'   
+  ##########################################################################
+  #  STEP FUNCTION LOG GROUP
+  ##########################################################################
+  StateMachineProcessFiles15MinIncrementsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Join [ "/", [ "stepfunctions", StateMachine]]     
+
+  StateMachineProcessFiles15MinIncrementsStartExectionPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties: 
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - states:StartExecution
+            Resource:
+              - !Ref "StateMachineProcessFiles15MinIncrements"
+
+  ##########################################################################
+  #  (TwilioProcessCSVFunction) Lambda Function                            
+  #                          
+  #  This function is invoked when an object is created in the S3 SOURCE bucket.
+  #  Function parses the csv file and add each row to the SQS queue.
+  ##########################################################################
+  TwilioProcessCSVFunction:
+    Type: AWS::Serverless::Function
+    Properties:      
+      Description: Lambda invoked by S3 bucket trigger. Parses CSV adds to SQS.
+      CodeUri: lambdas/process-csv/
+      Handler: app.lambdaHandler
+      AutoPublishAlias: livex
+      Runtime: nodejs18.x
+      Architectures:
+        - arm64
+      Role: !GetAtt TwilioProcessCSVFunctionRole.Arn  
+      ##########################################################################
+      # NOTE!!!
+      #                          
+      # Adjust Timeout and MemorySize if you are parsing very large CSV files!
+      # 128, 512, 1024, 1536, ...
+      ##########################################################################      
+      Timeout: 60
+      MemorySize: 512
+      Environment:
+        Variables:
+          REGION: !Ref "AWS::Region"    
+          HOLDING_BUCKET: !Sub "twilio-serverless-send-holding-${AWS::AccountId}-${AWS::Region}"        
+          ##########################################################################
+          # KEY SETTING ALERT!!!!
+          #                          
+          # This variable set the MPS, or Messages Per Second! This will assign an 
+          # incremental delay on each message. All messages will be delivered to
+          # queue at the same time, but messages will have different delays making
+          # it so that messages are available to be consumed my lambdas at a rate
+          # that matches the MPS set below. For example, setting the MPS to 5 means
+          # that 5 messages will be available to be consumed in the queue every 5
+          # seconds. Per the MaximumConcurrency setting in TwilioSendMessageFunction
+          # lambda, there will be 5 lambdas waiting to consume those messages so 
+          # messages are consumed immediately.
+          ##########################################################################            
+          MPS: !Ref 'MPS'    
+          STATE_MACHINE_ARN: !Ref "StateMachineProcessFiles15MinIncrements"        
+      Events:
+        FileUpload:
+          Type: S3
+          Properties:
+            Bucket: !Ref 'TwilioServerlessSendSourceBucket'
+            Events: s3:ObjectCreated:*
+            Filter: 
+              S3Key:
+                Rules:
+                  - Name: suffix
+                    Value: '.csv'                           
+  
+  ##########################################################################
+  #  Role for Lambda Function                            
+  #                          
+  #  Give permissions to lambda function.
+  ##########################################################################
+  TwilioProcessCSVFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole           
+      ManagedPolicyArns:        
+        - !Ref TwilioServerlessSendSourceBucketPolicy
+        - !Ref TwilioServerlessSendHoldingBucketPolicy
+        - !Ref StateMachineProcessFiles15MinIncrementsStartExectionPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  ##########################################################################
+  #  (TwilioProcessJSONFunction) Lambda Function                            
+  #                          
+  #  This function is invoked when an object is created in the S3 SOURCE bucket.
+  #  Function parses the json file and breaks it into smaller files if
+  #  needed and then moves to HOLDING bucket.
+  ##########################################################################
+  TwilioProcessJSONFunction:
+    Type: AWS::Serverless::Function
+    Properties:      
+      Description: Lambda invoked by S3 bucket trigger. Parses JSON and sends to holding bucket.
+      CodeUri: lambdas/process-json/
+      Handler: app.lambdaHandler
+      AutoPublishAlias: livex
+      Runtime: nodejs18.x
+      Architectures:
+        - arm64
+      Role: !GetAtt TwilioProcessJSONFunctionRole.Arn  
+      ##########################################################################
+      # NOTE!!!
+      #                          
+      # Adjust Timeout and MemorySize if you are parsing very large CSV files!
+      # 128, 512, 1024, 1536, ...
+      ##########################################################################      
+      Timeout: 60
+      MemorySize: 512
+      Environment:
+        Variables:
+          REGION: !Ref "AWS::Region"    
+          HOLDING_BUCKET: !Sub "twilio-serverless-send-holding-${AWS::AccountId}-${AWS::Region}"        
+          ##########################################################################
+          # KEY SETTING ALERT!!!!
+          #                          
+          # This variable set the MPS, or Messages Per Second! This will assign an 
+          # incremental delay on each message. All messages will be delivered to
+          # queue at the same time, but messages will have different delays making
+          # it so that messages are available to be consumed my lambdas at a rate
+          # that matches the MPS set below. For example, setting the MPS to 5 means
+          # that 5 messages will be available to be consumed in the queue every 5
+          # seconds. Per the MaximumConcurrency setting in TwilioSendMessageFunction
+          # lambda, there will be 5 lambdas waiting to consume those messages so 
+          # messages are consumed immediately.
+          ##########################################################################            
+          MPS: !Ref 'MPS'    
+          STATE_MACHINE_ARN: !Ref "StateMachineProcessFiles15MinIncrements"        
+      Events:
+        FileUpload:
+          Type: S3
+          Properties:
+            Bucket: !Ref 'TwilioServerlessSendSourceBucket'
+            Events: s3:ObjectCreated:*
+            Filter: 
+              S3Key:
+                Rules:
+                  - Name: suffix
+                    Value: '.json'                           
+  
+  ##########################################################################
+  #  Role for Lambda Function                            
+  #                          
+  #  Give permissions to lambda function.
+  ##########################################################################
+  TwilioProcessJSONFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole           
+      ManagedPolicyArns:        
+        - !Ref TwilioServerlessSendSourceBucketPolicy
+        - !Ref TwilioServerlessSendHoldingBucketPolicy
+        - !Ref StateMachineProcessFiles15MinIncrementsStartExectionPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  ##########################################################################
+  #  (TwilioCopyToProcessBucket) Lambda Function                            
+  #                          
+  #  This function is invoked by the step function and copies the current
+  #  file from the HOLDING bucket to the PROCESS bucket.
+  ##########################################################################
+  TwilioCopyToProcessBucketFunction:
+    Type: AWS::Serverless::Function
+    Properties:      
+      Description: Lambda invoked by state machine to move one file from HOLDING to PROCESS bucket
+      CodeUri: lambdas/copy-to-process-bucket/
+      Handler: app.lambdaHandler
+      AutoPublishAlias: live
+      Runtime: nodejs18.x
+      Architectures:
+        - arm64
+      Role: !GetAtt TwilioCopyToProcessBucketFunctionRole.Arn          
+      Timeout: 3
+      Environment:
+        Variables:
+          REGION: !Ref "AWS::Region"
+          HOLDING_BUCKET: !Sub "twilio-serverless-send-holding-${AWS::AccountId}-${AWS::Region}"
+          PROCESS_BUCKET: !Sub "twilio-serverless-send-process-${AWS::AccountId}-${AWS::Region}"  
+
+  ##########################################################################
+  #  Role for Lambda Function                            
+  #                          
+  #  Give permissions to lambda function.
+  ##########################################################################
+  TwilioCopyToProcessBucketFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole    
+      ManagedPolicyArns:        
+        - !Ref TwilioServerlessSendHoldingBucketPolicy
+        - !Ref TwilioServerlessSendProcessBucketPolicy        
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  ##########################################################################
+  #  (TwilioSendToSendQueueFunction) Lambda Function                            
+  #                          
+  #  This function is invoked when a json file gets put into the S3 PROCESS
+  #  bucjet. It parses the JSON, loops through the messages array and 
+  #  loads them all into the SQS queue.
+  ##########################################################################
+  TwilioSendToSendQueueFunction:
+    Type: AWS::Serverless::Function
+    Properties:      
+      Description: Lambda invoked by state machine to move one file from HOLDING to PROCESS bucket
+      CodeUri: lambdas/send-to-send-queue/
+      Handler: app.lambdaHandler
+      AutoPublishAlias: live
+      Runtime: nodejs18.x
+      Architectures:
+        - arm64
+      Role: !GetAtt TwilioSendToSendQueueFunctionRole.Arn          
+      ##########################################################
+      # Adjust Timeout and MemorySize if you are parsing large
+      # sets of messages
+      # 128, 512, 1024, 1536, ...      
+      ##########################################################
+      Timeout: 300
+      MemorySize: 3072
+      Environment:
+        Variables:
+          REGION: !Ref "AWS::Region"
+          SQS_QUEUE_URL: !Ref TwilioMessageSendQueue          
+          BUCKET: !Sub "twilio-serverless-send-process-${AWS::AccountId}-${AWS::Region}"  
+      Events:
+        FileUpload:
+          Type: S3
+          Properties:
+            Bucket: !Ref 'TwilioServerlessSendProcessBucket'
+            Events: s3:ObjectCreated:*
+            Filter: 
+              S3Key:
+                Rules:
+                  - Name: suffix
+                    Value: '.json'          
+
+  ##########################################################################
+  #  Role for Lambda Function                            
+  #                          
+  #  Give permissions to lambda function.
+  ##########################################################################
+  TwilioSendToSendQueueFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole    
+      ManagedPolicyArns:        
+        - !Ref TwilioServerlessSendProcessBucketPolicy
+        - !Ref TwilioMessageSendQueueSendPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        
+  ##########################################################################
+  #  (TwilioSendMessageFunction) Lambda Function                            
+  #                          
+  #  This function pulls from the SQS queue and calls the Twilio API and
+  #  sends the response object to the SNS Topic for further processing.
+  ##########################################################################
+  TwilioSendMessageFunction:
+    Type: AWS::Serverless::Function
+    Properties:      
+      Description: Lambda to be invoked by the SQS Queue
+      CodeUri: lambdas/send-message/
+      Handler: app.lambdaHandler
+      AutoPublishAlias: live
+      Runtime: nodejs18.x
+      Architectures:
+        - arm64
+      ##########################################################
+      # Timeout should be long enough to handle a batch of sqs      
+      # messages. If batch size is 1, then timeout can be just
+      # a few seconds. Longer batch size needs longer timeout.
+      ##########################################################
+      Timeout: 20
+      Environment:
+        Variables:
+          ##########################################################
+          # Production Credentials should be stored using 
+          # Secret Manager.
+          # Comment out lines below if using test credentials.
+          ##########################################################
+          #ACCOUNT_SID: 'xxxxxxxxxxxxxxx'
+          #AUTH_TOKEN: 'xxxxxxxxxxxxxxx'
+          ##########################################################
+          # TEST CREDENTIALS
+          # Enter your test credentials to test the Twilio API
+          # using Twilio Magic numbers.
+          # Comment out lines below if using production credentials.
+          ##########################################################
+          ACCOUNT_SID: 'AC4d0596487cf76eab9cbd9bacf0c04fe0'
+          AUTH_TOKEN: '70f987619c69ddd7961a93f4f3fc26f1'
+          REGION: !Ref "AWS::Region"
+          SNStopic: !Ref TwilioAPICallResponseTopic
+          SQS_QUEUE_URL: !Ref TwilioMessageSendQueue
+      Events:
+        TwilioMessageSendQueueEvent:        
+          Type: SQS
+          Properties:
+            Queue: !GetAtt TwilioMessageSendQueue.Arn
+            BatchSize: 1
+            Enabled: true
+            ##########################################################
+            # KEY SETTING ALERT!!!
+            #
+            # MaximumConcurrency
+            # 
+            # This is the maximum number of lambdas that can run 
+            # concurrently when invoked by this SQS trigger.
+            #
+            # The Maximum concurrency should match the desired MPS!
+            # 1 lambda will handle 1 message at a time (BatchSize: 1)
+            # Lambdas will pull SQS messages at the same rate that they 
+            # are delivered to the SQS queue.
+            #
+            ##########################################################            
+            ScalingConfig:
+              MaximumConcurrency: !Ref 'MPSNUM'            
+      Policies:
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt TwilioAPICallResponseTopic.TopicName
+
+##########################################################################
+#   Outputs
+##########################################################################
+Outputs:
+
+  TwilioAPICallResponseTopic:
+    Description: SNS topic name
+    Value: !GetAtt TwilioAPICallResponseTopic.TopicName
+    Export:
+      Name: 'TwilioAPICallResponseTopic'
+
+  ##########################################################################
+  #   Processors can subscribe to this topic to process api responses.
+  ##########################################################################
+  TwilioAPICallResponseTopicARN:
+    Description: SNS topic ARN
+    Value: !Ref TwilioAPICallResponseTopic
+    Export:
+      Name: 'TwilioAPICallResponseTopicARN'                

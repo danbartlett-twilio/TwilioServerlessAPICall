@@ -1,0 +1,44 @@
+{
+  "Comment": "State machine allows for files to process in 15 minute increments until completed.",
+  "StartAt": "Copy Next File to Process Bucket",
+  "States": {
+    "Check Array": {
+      "Comment": "Check if there are any more files left to process.",
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Payload.FileArrayLength",
+          "NumericEquals": 0,            
+          "Next": "Files Processed"
+        },
+        {
+          "Variable": "$.Payload.FileArrayLength",
+          "NumericGreaterThan": 0,            
+          "Next": "Wait 905 Seconds"
+        }          
+      ],
+      "Default": "Files Processed"
+    },
+    "Copy Next File to Process Bucket": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${TwilioCopyToProcessBucketFunctionArn}",
+        "Payload": {
+          "Input.$": "$"
+        }
+      },
+      "Next": "Check Array"
+    },    
+    "Wait 905 Seconds": {
+      "Comment": "Wait 905 seconds (15 minutes) to allow SQS and lambda workers to process a file before starting on the next one.",
+      "Type": "Wait",
+      "Seconds": 905,
+      "Next": "Copy Next File to Process Bucket"
+    },
+    "Files Processed": {
+      "Type": "Pass",
+      "End": true
+    }
+  }
+}

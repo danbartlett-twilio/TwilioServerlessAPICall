@@ -1,0 +1,104 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  SaveAPIResponseToS3
+
+  Subscribed to SNS Topic after all API calls. Save responses to S3 bucket.
+  
+Globals:
+  Function:
+    Timeout: 3
+
+Resources:
+
+  ##########################################################################
+  #  S3 Bucket
+  #                          
+  #  Store json objects of response from calling Twilio API.
+  ########################################################################## 
+  TwilioAPIResponsesBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "twilio-api-responses-${AWS::AccountId}-${AWS::Region}"  
+  
+  ##########################################################################
+  #  Managed Policy
+  #                          
+  #  Policy to allow write access to the S3 bucket.
+  ########################################################################## 
+  TwilioAPIResponsesBucketPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties: 
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:PutObject              
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Ref TwilioAPIResponsesBucket
+                - /*     
+
+  ##########################################################################
+  #  Policy
+  #                          
+  #  Provide permission for SNS to invoke the Lambda function
+  ########################################################################## 
+  SNStoTwilioWriteApiResponseToS3FunctionPermission:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !Ref TwilioWriteApiResponseToS3Function
+      Principal: sns.amazonaws.com
+
+  ##########################################################################
+  #  Lambda Function                            
+  #                          
+  #  This function receives messages from SNS topic, does some parsing 
+  #  and saves to S3 bucket.
+  ##########################################################################
+  TwilioWriteApiResponseToS3Function:
+    Type: AWS::Serverless::Function
+    Properties:      
+      Description: Lambda invoked by SNS topics, writes to S3 bucket
+      CodeUri: lambdas/save-api-response-to-s3/
+      Handler: app.lambdaHandler
+      AutoPublishAlias: live
+      Runtime: nodejs18.x
+      Architectures:
+        - arm64
+      Role: !GetAtt TwilioWriteApiResponseToS3FunctionRole.Arn
+      Timeout: 3
+      MemorySize: 128
+      Environment:
+        Variables:
+          REGION: !Ref "AWS::Region"
+          DestinationBucket: !Sub "twilio-api-responses-${AWS::AccountId}-${AWS::Region}"         
+      Events:
+        SNSEvent:
+          Type: SNS
+          Properties:
+            Topic: !ImportValue 'TwilioAPICallResponseTopicARN'
+
+  ##########################################################################
+  #  Role for Lambda Function                            
+  #                          
+  #  Give permissions to lambda function.
+  ##########################################################################
+  TwilioWriteApiResponseToS3FunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole    
+      ManagedPolicyArns:        
+        - !Ref TwilioAPIResponsesBucketPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole

@@ -1,0 +1,195 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  CheckAPIResponseForErrors
+
+  Lambda checks SNS messages for errors and if present send to EventBus for further processing.  
+
+Globals:
+  Function:
+    Timeout: 3
+
+Resources:
+
+  ##########################################################################
+  #  Policy
+  #                          
+  #  Provide permission for SNS to invoke the Lambda function
+  ########################################################################## 
+  SNStoTwilioCheckForAPIResponseErrorsFunctionPermission:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !Ref TwilioCheckForAPIResponseErrorsFunction
+      Principal: sns.amazonaws.com
+
+  ##########################################################################
+  #  EventBridge EventBus
+  #                          
+  #  Custom EventBus to process error codes
+  ########################################################################## 
+  TwilioAPIResponseErrorsEventBus:                
+    Type: AWS::Events::EventBus
+    Properties:       
+      Name: TwilioAPIResponseErrorsEventBus
+
+  ##########################################################################
+  #  Policy
+  #                          
+  #  Managed IAM Policy to access EventBus (allow Lambda to PUT events
+  #  on the eventbus).
+  ########################################################################## 
+  TwilioAPIResponseErrorsEventBusPutPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties: 
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - events:PutEvents 
+            Resource: !GetAtt TwilioAPIResponseErrorsEventBus.Arn
+
+
+
+  ##########################################################################
+  #  (TwilioCheckForAPIResponseErrorsFunction) Lambda Function                            
+  #                          
+  #  This function receives messages messages from SNS and if errors are
+  #  present, send them to event bus
+  ##########################################################################
+  TwilioCheckForAPIResponseErrorsFunction:
+    Type: AWS::Serverless::Function
+    Properties:      
+      Description: Lambda invoked by SNS topics, checks for errors, sends to event bus
+      CodeUri: lambdas/check-for-errors/
+      Handler: app.lambdaHandler
+      AutoPublishAlias: live
+      Runtime: nodejs18.x
+      Architectures:
+        - arm64
+      Role: !GetAtt TwilioCheckForAPIResponseErrorsFunctionRole.Arn
+      Timeout: 3
+      MemorySize: 128
+      Environment:
+        Variables:
+          REGION: !Ref "AWS::Region"
+          EVENTBUS_NAME: !Ref TwilioAPIResponseErrorsEventBus
+          EVENT_SOURCE_NAME: 'custom.twilioApiResponseErrors'
+          EVENT_DETAIL_TYPE: 'errormessage'                 
+      Events:
+        SNSEvent:
+          Type: SNS
+          Properties:
+            Topic: !ImportValue 'TwilioAPICallResponseTopicARN'
+
+  ##########################################################################
+  #  Role for Lambda Function                            
+  #                          
+  #  Allow lambda function to write to event bus.
+  ##########################################################################
+  TwilioCheckForAPIResponseErrorsFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole    
+      ManagedPolicyArns:        
+        - !Ref TwilioAPIResponseErrorsEventBusPutPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  ##########################################################################
+  #  (ErrorCode21212Function) Lambda Function & Role
+  #                          
+  #  Invoked by eventbus with error 21212. Stub for further processing.
+  ##########################################################################
+  ErrorCode21212Function:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambdas/error-code-21212/
+      Handler: app.lambdaHandler
+      Runtime: nodejs18.x
+      Role: !GetAtt ErrorCode21212FunctionRole.Arn 
+      Events:
+        Trigger:
+          Type: CloudWatchEvent 
+          Properties:
+            EventBusName: !Ref TwilioAPIResponseErrorsEventBus
+            Pattern:
+              source:
+                - custom.twilioApiResponseErrors
+              detail-type:
+                - errormessage                      
+              detail:
+                ErrorCode:                  
+                  - "21212"
+      Environment:  
+        Variables:          
+          EVENTBUS_NAME: !Ref TwilioAPIResponseErrorsEventBus
+          EVENT_SOURCE_NAME: 'custom.twilioApiResponseErrors'
+          EVENT_DETAIL_TYPE: 'errormessage'    
+  ErrorCode21212FunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole    
+      ManagedPolicyArns:        
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole 
+
+  ##########################################################################
+  #  (ErrorCode21610Function) Lambda Function & Role
+  #                          
+  #  Invoked by eventbus with error 21606. Stub for further processing.
+  ##########################################################################
+  ErrorCode21610Function:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambdas/error-code-21610/
+      Handler: app.lambdaHandler
+      Runtime: nodejs18.x
+      Role: !GetAtt ErrorCode21610FunctionRole.Arn 
+      Events:
+        Trigger:
+          Type: CloudWatchEvent 
+          Properties:
+            EventBusName: !Ref TwilioAPIResponseErrorsEventBus
+            Pattern:
+              source:
+                - custom.twilioApiResponseErrors
+              detail-type:
+                - errormessage                      
+              detail:
+                ErrorCode:                  
+                  - "21610"
+      Environment:  
+        Variables:          
+          EVENTBUS_NAME: !Ref TwilioAPIResponseErrorsEventBus
+          EVENT_SOURCE_NAME: 'custom.twilioApiResponseErrors'
+          EVENT_DETAIL_TYPE: 'errormessage'    
+  ErrorCode21610FunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole    
+      ManagedPolicyArns:        
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole   

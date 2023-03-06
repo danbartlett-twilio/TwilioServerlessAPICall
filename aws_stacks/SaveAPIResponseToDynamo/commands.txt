@@ -1,0 +1,1 @@
+sam deploy --stack-name SaveAPIResponseToDynamo --template template.yaml --profile YOUR-AWS-PROFILE
