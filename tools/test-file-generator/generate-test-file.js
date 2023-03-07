@@ -16,7 +16,7 @@ console.log("Number of Messages => ", qty);
 const now = Date.now();
 
 // Build filename
-const filename = `./${type}/${qty}-${now}.${type}`;
+const filename = `./${qty}-${now}.${type}`;
 console.log("Filename => ", filename);
 
 // Import fs module
