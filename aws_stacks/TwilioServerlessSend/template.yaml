@@ -12,10 +12,10 @@ Parameters:
   ##########################################################################
   MPS:
     Type: String
-    Default: '100'    
+    Default: '5'    
   MPSNUM:
     Type: Number
-    Default: '100'        
+    Default: '5'        
 
 Resources:
 
@@ -488,16 +488,16 @@ Resources:
           # Secret Manager.
           # Comment out lines below if using test credentials.
           ##########################################################
-          #ACCOUNT_SID: 'xxxxxxxxxxxxxxx'
-          #AUTH_TOKEN: 'xxxxxxxxxxxxxxx'
+          #ACCOUNT_SID: '{{resolve:secretsmanager:Twilio:SecretString:ACCOUNT_SID}}'
+          #AUTH_TOKEN: '{{resolve:secretsmanager:Twilio:SecretString:AUTH_TOKEN}}'
           ##########################################################
           # TEST CREDENTIALS
           # Enter your test credentials to test the Twilio API
           # using Twilio Magic numbers.
           # Comment out lines below if using production credentials.
           ##########################################################
-          ACCOUNT_SID: 'AC4d0596487cf76eab9cbd9bacf0c04fe0'
-          AUTH_TOKEN: '70f987619c69ddd7961a93f4f3fc26f1'
+          ACCOUNT_SID: '{{resolve:secretsmanager:Twilio:SecretString:TEST_ACCOUNT_SID}}'
+          AUTH_TOKEN: '{{resolve:secretsmanager:Twilio:SecretString:TEST_AUTH_TOKEN}}'
           REGION: !Ref "AWS::Region"
           SNStopic: !Ref TwilioAPICallResponseTopic
           SQS_QUEUE_URL: !Ref TwilioMessageSendQueue
