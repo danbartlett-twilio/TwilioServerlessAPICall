@@ -489,7 +489,8 @@ Resources:
           # Comment out lines below if using test credentials.
           ##########################################################
           #ACCOUNT_SID: '{{resolve:secretsmanager:Twilio:SecretString:ACCOUNT_SID}}'
-          #AUTH_TOKEN: '{{resolve:secretsmanager:Twilio:SecretString:AUTH_TOKEN}}'
+          #ACCOUNT_KEY: '{{resolve:secretsmanager:Twilio:SecretString:ACCOUNT_KEY}}'
+          #ACCOUNT_SECRET: '{{resolve:secretsmanager:Twilio:SecretString:ACCOUNT_SECRET}}'
           ##########################################################
           # TEST CREDENTIALS
           # Enter your test credentials to test the Twilio API
@@ -497,7 +498,8 @@ Resources:
           # Comment out lines below if using production credentials.
           ##########################################################
           ACCOUNT_SID: '{{resolve:secretsmanager:Twilio:SecretString:TEST_ACCOUNT_SID}}'
-          AUTH_TOKEN: '{{resolve:secretsmanager:Twilio:SecretString:TEST_AUTH_TOKEN}}'
+          ACCOUNT_KEY: '{{resolve:secretsmanager:Twilio:SecretString:TEST_ACCOUNT_SID}}'
+          ACCOUNT_SECRET: '{{resolve:secretsmanager:Twilio:SecretString:TEST_AUTH_TOKEN}}'        
           REGION: !Ref "AWS::Region"
           SNStopic: !Ref TwilioAPICallResponseTopic
           SQS_QUEUE_URL: !Ref TwilioMessageSendQueue

@@ -74,33 +74,32 @@ async function processMessage(message) {
     // Prepare Twilio response object
     let twilioResponse = { status:null, body:null };    
 
-    // URL to Twilio endpoint. Default is MESSAGING API    
-    let url = `https://api.twilio.com/2010-04-01/Accounts/${process.env.ACCOUNT_SID}/Messages.json`;
+     // URL to Twilio endpoint. Default is MESSAGING API    
+     let url = `https://api.twilio.com/2010-04-01/Accounts/${process.env.ACCOUNT_SID}/Messages.json`;
     
-    /* POSSIBLE IMPLEMENTATION USING MULTIPLE ENDPOINTS...
-    // Pass in an "api" param 
-    
-    if (m?.api) {
-        switch (m.api) {
-            case "lookup":
-                url = `https://lookups.twilio.com/v2/PhoneNumbers/${m.To}`;
-                break;
-            case "studio":
-                url = `https://studio.twilio.com/v2/Flows/${m.Flow}/Executions`;
-                break;                
-            default:
-                // Messaging API set as default already
-                break;
-
-        }
-    }
-
-    */
-
-    // Crendentials to securely call Twilio API.
-    const credentials = Buffer.from(`${process.env.ACCOUNT_SID}:${process.env.AUTH_TOKEN}`).toString('base64');
-    
-    // comment
+     /* POSSIBLE IMPLEMENTATION USING MULTIPLE ENDPOINTS...
+     // Pass in an "api" param 
+     
+     if (m?.api) {
+         switch (m.api) {
+             case "lookup":
+                 url = `https://lookups.twilio.com/v2/PhoneNumbers/${m.To}`;
+                 break;
+             case "studio":
+                 url = `https://studio.twilio.com/v2/Flows/${m.Flow}/Executions`;
+                 break;                
+             default:
+                 // Messaging API set as default already
+                 break;
+ 
+         }
+     }
+ 
+     */
+ 
+     // Crendentials to securely call Twilio API.
+     const credentials = Buffer.from(`${process.env.ACCOUNT_KEY}:${process.env.ACCOUNT_SECRET}`).toString('base64');
+  
     // Prepare headers for POST call
     let headers = {
         "Content-Type": "application/x-www-form-urlencoded",
