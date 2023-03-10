@@ -7,13 +7,13 @@ Parameters:
   ##########################################################################
   #  KEY SETTING ALERT!
   #
-  #  Set your desired MPS, Messages Per Second, below!  
-  #  MPS and MPSNUM should be the same!
+  #  Set your desired CPS, (API) Calls Per Second, below!  
+  #  CPS and CPSNUM should be the same!
   ##########################################################################
-  MPS:
+  CPS:
     Type: String
     Default: '5'    
-  MPSNUM:
+  CPSNUM:
     Type: Number
     Default: '5'        
 
@@ -143,7 +143,7 @@ Resources:
   #  STEP FUNCTION
   #
   #  SQS queue can delay messages for up to 15 minutes (900 seconds). 
-  #  Depending on the MPS and the number of messages in the file, the original
+  #  Depending on the CPS and the number of messages in the file, the original
   #  file loaded into SOURCE can be broken into as many files as needed to
   #  handle the quantity in 15 minute increments. The Step Function will 
   #  one file every 905 seconds by moving from HOLDING to PROCESS bucket.
@@ -222,17 +222,17 @@ Resources:
           ##########################################################################
           # KEY SETTING ALERT!!!!
           #                          
-          # This variable set the MPS, or Messages Per Second! This will assign an 
+          # This variable set the CPS, or Messages Per Second! This will assign an 
           # incremental delay on each message. All messages will be delivered to
           # queue at the same time, but messages will have different delays making
           # it so that messages are available to be consumed my lambdas at a rate
-          # that matches the MPS set below. For example, setting the MPS to 5 means
+          # that matches the CPS set below. For example, setting the CPS to 5 means
           # that 5 messages will be available to be consumed in the queue every 5
           # seconds. Per the MaximumConcurrency setting in TwilioSendMessageFunction
           # lambda, there will be 5 lambdas waiting to consume those messages so 
           # messages are consumed immediately.
           ##########################################################################            
-          MPS: !Ref 'MPS'    
+          CPS: !Ref 'CPS'    
           STATE_MACHINE_ARN: !Ref "StateMachineProcessFiles15MinIncrements"        
       Events:
         FileUpload:
@@ -302,17 +302,17 @@ Resources:
           ##########################################################################
           # KEY SETTING ALERT!!!!
           #                          
-          # This variable set the MPS, or Messages Per Second! This will assign an 
+          # This variable set the CPS, or Messages Per Second! This will assign an 
           # incremental delay on each message. All messages will be delivered to
           # queue at the same time, but messages will have different delays making
           # it so that messages are available to be consumed my lambdas at a rate
-          # that matches the MPS set below. For example, setting the MPS to 5 means
+          # that matches the CPS set below. For example, setting the CPS to 5 means
           # that 5 messages will be available to be consumed in the queue every 5
           # seconds. Per the MaximumConcurrency setting in TwilioSendMessageFunction
           # lambda, there will be 5 lambdas waiting to consume those messages so 
           # messages are consumed immediately.
           ##########################################################################            
-          MPS: !Ref 'MPS'    
+          CPS: !Ref 'CPS'    
           STATE_MACHINE_ARN: !Ref "StateMachineProcessFiles15MinIncrements"        
       Events:
         FileUpload:
@@ -498,7 +498,7 @@ Resources:
           # Comment out lines below if using production credentials.
           ##########################################################
           ACCOUNT_SID: '{{resolve:secretsmanager:Twilio:SecretString:TEST_ACCOUNT_SID}}'
-          ACCOUNT_KEY: '{{resolve:secretsmanager:Twilio:SecretString:TEST_ACCOUNT_SID}}'
+          ACCOUNT_KEY: '{{resolve:secretsmanager:Twilio:SecretString:TEST_ACCOUNT_KEY}}'
           ACCOUNT_SECRET: '{{resolve:secretsmanager:Twilio:SecretString:TEST_AUTH_TOKEN}}'        
           REGION: !Ref "AWS::Region"
           SNStopic: !Ref TwilioAPICallResponseTopic
@@ -518,14 +518,14 @@ Resources:
             # This is the maximum number of lambdas that can run 
             # concurrently when invoked by this SQS trigger.
             #
-            # The Maximum concurrency should match the desired MPS!
+            # The Maximum concurrency should match the desired CPS!
             # 1 lambda will handle 1 message at a time (BatchSize: 1)
             # Lambdas will pull SQS messages at the same rate that they 
             # are delivered to the SQS queue.
             #
             ##########################################################            
             ScalingConfig:
-              MaximumConcurrency: !Ref 'MPSNUM'            
+              MaximumConcurrency: !Ref 'CPSNUM'            
       Policies:
         - SNSPublishMessagePolicy:
             TopicName: !GetAtt TwilioAPICallResponseTopic.TopicName
