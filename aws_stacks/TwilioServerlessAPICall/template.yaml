@@ -7,15 +7,11 @@ Parameters:
   ##########################################################################
   #  KEY SETTING ALERT!
   #
-  #  Set your desired CPS, (API) Calls Per Second, below!  
-  #  CPS and CPSNUM should be the same!
+  #  Set your desired CPS, (API) Calls Per Second, below!    
   ##########################################################################
   CPS:
-    Type: String
-    Default: '5'    
-  CPSNUM:
     Type: Number
-    Default: '5'        
+    Default: '5'       
 
 Resources:
 
@@ -415,11 +411,11 @@ Resources:
       Role: !GetAtt TwilioSendToSendQueueFunctionRole.Arn          
       ##########################################################
       # Adjust Timeout and MemorySize if you are parsing large
-      # sets of messages
+      # sets of api calls
       # 128, 512, 1024, 1536, ...      
       ##########################################################
       Timeout: 300
-      MemorySize: 3072
+      MemorySize: 1024
       Environment:
         Variables:
           REGION: !Ref "AWS::Region"
@@ -499,7 +495,7 @@ Resources:
           ##########################################################
           ACCOUNT_SID: '{{resolve:secretsmanager:Twilio:SecretString:TEST_ACCOUNT_SID}}'
           ACCOUNT_KEY: '{{resolve:secretsmanager:Twilio:SecretString:TEST_ACCOUNT_KEY}}'
-          ACCOUNT_SECRET: '{{resolve:secretsmanager:Twilio:SecretString:TEST_AUTH_TOKEN}}'        
+          ACCOUNT_SECRET: '{{resolve:secretsmanager:Twilio:SecretString:TEST_ACCOUNT_SECRET}}'        
           REGION: !Ref "AWS::Region"
           SNStopic: !Ref TwilioAPICallResponseTopic
           SQS_QUEUE_URL: !Ref TwilioMessageSendQueue
@@ -525,7 +521,7 @@ Resources:
             #
             ##########################################################            
             ScalingConfig:
-              MaximumConcurrency: !Ref 'CPSNUM'            
+              MaximumConcurrency: !Ref 'CPS'            
       Policies:
         - SNSPublishMessagePolicy:
             TopicName: !GetAtt TwilioAPICallResponseTopic.TopicName

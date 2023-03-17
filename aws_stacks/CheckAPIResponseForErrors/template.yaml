@@ -152,7 +152,7 @@ Resources:
   ##########################################################################
   #  (ErrorCode21610Function) Lambda Function & Role
   #                          
-  #  Invoked by eventbus with error 21606. Stub for further processing.
+  #  Invoked by eventbus with error 21610. Stub for further processing.
   ##########################################################################
   ErrorCode21610Function:
     Type: AWS::Serverless::Function
@@ -193,3 +193,50 @@ Resources:
               - sts:AssumeRole    
       ManagedPolicyArns:        
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole   
+
+  ##########################################################################
+  #  (ErrorCode21611Function) Lambda Function & Role
+  #                          
+  #  Invoked by eventbus with error 21611. Stub for further processing
+  #  and POSSIBLE RETRY!
+  #  429 Errror => SMS queue full!
+  ##########################################################################
+  ErrorCode21611Function:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambdas/error-code-21611/
+      Handler: app.lambdaHandler
+      Runtime: nodejs18.x
+      Role: !GetAtt ErrorCode21611FunctionRole.Arn 
+      Events:
+        Trigger:
+          Type: CloudWatchEvent 
+          Properties:
+            EventBusName: !Ref TwilioAPIResponseErrorsEventBus
+            Pattern:
+              source:
+                - custom.twilioApiResponseErrors
+              detail-type:
+                - errormessage                      
+              detail:
+                ErrorCode:                  
+                  - "21611"
+      Environment:  
+        Variables:          
+          EVENTBUS_NAME: !Ref TwilioAPIResponseErrorsEventBus
+          EVENT_SOURCE_NAME: 'custom.twilioApiResponseErrors'
+          EVENT_DETAIL_TYPE: 'errormessage'    
+  ErrorCode21611FunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole    
+      ManagedPolicyArns:        
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole           
