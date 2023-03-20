@@ -1,7 +1,7 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  TwilioServerlessSend Primary Stack  
+  TwilioServerlessAPICall Primary Stack  
 
 Parameters:
   ##########################################################################
@@ -18,25 +18,25 @@ Resources:
   ##########################################################################
   #  SQS Queue                 
   #
-  #  This queue holds for messages waiting to be POSTed to Twilio API.
-  #  Dead Letter Queue holds any messages that fail to process.
+  #  This queue holds for api calls waiting to be POSTed to Twilio API.
+  #  Dead Letter Queue holds any api calls that fail to process.
   ##########################################################################
-  TwilioMessageSendDeadLetterQueue:
+  TwilioAPICallDeadLetterQueue:
     Type: AWS::SQS::Queue  
   
-  TwilioMessageSendQueue:
+  TwilioAPICallQueue:
     Type: AWS::SQS::Queue
     Properties:
-      QueueName: TwilioMessageSendQueue
+      QueueName: TwilioAPICallQueue
       # 30 is default value, value should be 6x of Send Lambda
       VisibilityTimeout: 120
       ##########################################################################
-      # Only try to send messages once! Failed messages are sent to a 
-      # dead letter queue. The expectations is that all messages should be
+      # Only try to api calls! Failed api calls are sent to a 
+      # dead letter queue. The expectations is that all api calls should be
       # processed with 1 attempt.
       ##########################################################################
       RedrivePolicy:
-        deadLetterTargetArn : !GetAtt TwilioMessageSendDeadLetterQueue.Arn
+        deadLetterTargetArn : !GetAtt TwilioAPICallDeadLetterQueue.Arn
         maxReceiveCount : 1          
 
   ##########################################################################
@@ -44,8 +44,8 @@ Resources:
   #
   #  Gives lambda holding this policy permission to send messages to 
   #  SQS Queue.
-  ##########################################################################      
-  TwilioMessageSendQueueSendPolicy:
+  ##########################################################################        
+  TwilioAPICallQueuePolicy:
     Type: AWS::IAM::ManagedPolicy
     Properties: 
       PolicyDocument:
@@ -54,7 +54,7 @@ Resources:
           - Effect: Allow
             Action:
               - sqs:SendMessage
-            Resource: !GetAtt TwilioMessageSendQueue.Arn        
+            Resource: !GetAtt TwilioAPICallQueue.Arn        
 
   ##########################################################################
   #  S3 Buckets
@@ -62,8 +62,8 @@ Resources:
   #  Each bucket has a managed policy that grants privs to lambdas.
   #  
   #  1) Source => data files (csv or json) loaded here for processing
-  #  2) Holding => json files held here before going to send queue.
-  #  3) Process => json files send here are immediately sent to send queue.
+  #  2) Holding => json files held here before going to TwilioAPICallQueue.
+  #  3) Process => json files sent here are immediately sent to TwilioAPICallQueue.
   ########################################################################## 
   TwilioServerlessSendSourceBucket:
     Type: AWS::S3::Bucket
@@ -138,8 +138,8 @@ Resources:
   ##########################################################################
   #  STEP FUNCTION
   #
-  #  SQS queue can delay messages for up to 15 minutes (900 seconds). 
-  #  Depending on the CPS and the number of messages in the file, the original
+  #  SQS queue can delay api calls for up to 15 minutes (900 seconds). 
+  #  Depending on the CPS and the number of api calls in the file, the original
   #  file loaded into SOURCE can be broken into as many files as needed to
   #  handle the quantity in 15 minute increments. The Step Function will 
   #  one file every 905 seconds by moving from HOLDING to PROCESS bucket.
@@ -218,15 +218,15 @@ Resources:
           ##########################################################################
           # KEY SETTING ALERT!!!!
           #                          
-          # This variable set the CPS, or Messages Per Second! This will assign an 
-          # incremental delay on each message. All messages will be delivered to
-          # queue at the same time, but messages will have different delays making
-          # it so that messages are available to be consumed my lambdas at a rate
+          # This variable set the CPS, or Calls Per Second! This will assign an 
+          # incremental delay on each api call. All api calls will be delivered to
+          # queue at the same time, but api calls will have different delays making
+          # it so that api calls are available to be consumed by lambdas at a rate
           # that matches the CPS set below. For example, setting the CPS to 5 means
-          # that 5 messages will be available to be consumed in the queue every 5
-          # seconds. Per the MaximumConcurrency setting in TwilioSendMessageFunction
-          # lambda, there will be 5 lambdas waiting to consume those messages so 
-          # messages are consumed immediately.
+          # that 5 api calls will be available to be consumed in the queue every 5
+          # seconds. Per the MaximumConcurrency setting in TwilioMakeAPICallFunction
+          # lambda, there will be 5 lambdas waiting to consume those api calls so 
+          # api calls are consumed immediately.
           ##########################################################################            
           CPS: !Ref 'CPS'    
           STATE_MACHINE_ARN: !Ref "StateMachineProcessFiles15MinIncrements"        
@@ -296,17 +296,17 @@ Resources:
           REGION: !Ref "AWS::Region"    
           HOLDING_BUCKET: !Sub "twilio-serverless-send-holding-${AWS::AccountId}-${AWS::Region}"        
           ##########################################################################
-          # KEY SETTING ALERT!!!!
+          # KEY SETTING ALERT!!!!          
           #                          
-          # This variable set the CPS, or Messages Per Second! This will assign an 
-          # incremental delay on each message. All messages will be delivered to
-          # queue at the same time, but messages will have different delays making
-          # it so that messages are available to be consumed my lambdas at a rate
+          # This variable set the CPS, or Calls Per Second! This will assign an 
+          # incremental delay on each api call. All api calls will be delivered to
+          # queue at the same time, but api calls will have different delays making
+          # it so that api calls are available to be consumed by lambdas at a rate
           # that matches the CPS set below. For example, setting the CPS to 5 means
-          # that 5 messages will be available to be consumed in the queue every 5
-          # seconds. Per the MaximumConcurrency setting in TwilioSendMessageFunction
-          # lambda, there will be 5 lambdas waiting to consume those messages so 
-          # messages are consumed immediately.
+          # that 5 api calls will be available to be consumed in the queue every 5
+          # seconds. Per the MaximumConcurrency setting in TwilioMakeAPICallFunction
+          # lambda, there will be 5 lambdas waiting to consume those api calls so 
+          # api calls are consumed immediately.          
           ##########################################################################            
           CPS: !Ref 'CPS'    
           STATE_MACHINE_ARN: !Ref "StateMachineProcessFiles15MinIncrements"        
@@ -395,7 +395,7 @@ Resources:
   #  (TwilioSendToSendQueueFunction) Lambda Function                            
   #                          
   #  This function is invoked when a json file gets put into the S3 PROCESS
-  #  bucjet. It parses the JSON, loops through the messages array and 
+  #  bucjet. It parses the JSON, loops through the api call array and 
   #  loads them all into the SQS queue.
   ##########################################################################
   TwilioSendToSendQueueFunction:
@@ -419,7 +419,7 @@ Resources:
       Environment:
         Variables:
           REGION: !Ref "AWS::Region"
-          SQS_QUEUE_URL: !Ref TwilioMessageSendQueue          
+          SQS_QUEUE_URL: !Ref TwilioAPICallQueue          
           BUCKET: !Sub "twilio-serverless-send-process-${AWS::AccountId}-${AWS::Region}"  
       Events:
         FileUpload:
@@ -452,20 +452,20 @@ Resources:
               - sts:AssumeRole    
       ManagedPolicyArns:        
         - !Ref TwilioServerlessSendProcessBucketPolicy
-        - !Ref TwilioMessageSendQueueSendPolicy
+        - !Ref TwilioAPICallQueuePolicy
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
         
   ##########################################################################
-  #  (TwilioSendMessageFunction) Lambda Function                            
+  #  (TwilioMakeAPICallFunction) Lambda Function                            
   #                          
   #  This function pulls from the SQS queue and calls the Twilio API and
   #  sends the response object to the SNS Topic for further processing.
   ##########################################################################
-  TwilioSendMessageFunction:
+  TwilioMakeAPICallFunction:
     Type: AWS::Serverless::Function
     Properties:      
       Description: Lambda to be invoked by the SQS Queue
-      CodeUri: lambdas/send-message/
+      CodeUri: lambdas/make-api-call/
       Handler: app.lambdaHandler
       AutoPublishAlias: live
       Runtime: nodejs18.x
@@ -490,7 +490,9 @@ Resources:
           ##########################################################
           # TEST CREDENTIALS
           # Enter your test credentials to test the Twilio API
-          # using Twilio Magic numbers.
+          # using Twilio Magic numbers. Twilio Test Credentials work
+          # on only parts of the Twilio Rest API
+          # https://www.twilio.com/docs/iam/test-credentials
           # Comment out lines below if using production credentials.
           ##########################################################
           ACCOUNT_SID: '{{resolve:secretsmanager:Twilio:SecretString:TEST_ACCOUNT_SID}}'
@@ -498,12 +500,12 @@ Resources:
           ACCOUNT_SECRET: '{{resolve:secretsmanager:Twilio:SecretString:TEST_ACCOUNT_SECRET}}'        
           REGION: !Ref "AWS::Region"
           SNStopic: !Ref TwilioAPICallResponseTopic
-          SQS_QUEUE_URL: !Ref TwilioMessageSendQueue
+          SQS_QUEUE_URL: !Ref TwilioAPICallQueue
       Events:
-        TwilioMessageSendQueueEvent:        
+        TwilioAPICallQueueEvent:        
           Type: SQS
           Properties:
-            Queue: !GetAtt TwilioMessageSendQueue.Arn
+            Queue: !GetAtt TwilioAPICallQueue.Arn
             BatchSize: 1
             Enabled: true
             ##########################################################
@@ -515,7 +517,7 @@ Resources:
             # concurrently when invoked by this SQS trigger.
             #
             # The Maximum concurrency should match the desired CPS!
-            # 1 lambda will handle 1 message at a time (BatchSize: 1)
+            # 1 lambda will handle 1 SQS message at a time (BatchSize: 1)
             # Lambdas will pull SQS messages at the same rate that they 
             # are delivered to the SQS queue.
             #
