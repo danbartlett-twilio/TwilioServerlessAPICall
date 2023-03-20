@@ -1,1 +1,1 @@
-sam deploy --stack-name TwilioServerlessSend --template template.yaml --profile YOUR-AWS-PROFILE
+sam deploy --stack-name TwilioServerlessAPICall --template template.yaml --profile YOUR-AWS-PROFILE

@@ -11,7 +11,7 @@ Parameters:
   ##########################################################################
   CPS:
     Type: Number
-    Default: '5'       
+    Default: '3'       
 
 Resources:
 
