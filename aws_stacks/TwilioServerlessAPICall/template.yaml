@@ -7,9 +7,9 @@ Parameters:
   ##########################################################################
   #  KEY SETTING ALERT!
   #
-  #  Set your desired CPS, (API) Calls Per Second, below!    
+  #  Set your desired API Calls Per Second, below!    
   ##########################################################################
-  CPS:
+  APICALLSPERSECOND:
     Type: Number
     Default: '3'       
 
@@ -139,9 +139,9 @@ Resources:
   #  STEP FUNCTION
   #
   #  SQS queue can delay api calls for up to 15 minutes (900 seconds). 
-  #  Depending on the CPS and the number of api calls in the file, the original
-  #  file loaded into SOURCE can be broken into as many files as needed to
-  #  handle the quantity in 15 minute increments. The Step Function will 
+  #  Depending on the API CALLS PER SECOND and the number of api calls in the file, 
+  #  the original file loaded into SOURCE can be broken into as many files as needed 
+  #  to handle the quantity in 15 minute increments. The Step Function will 
   #  one file every 905 seconds by moving from HOLDING to PROCESS bucket.
   ##########################################################################
   StateMachineProcessFiles15MinIncrements:
@@ -218,17 +218,17 @@ Resources:
           ##########################################################################
           # KEY SETTING ALERT!!!!
           #                          
-          # This variable set the CPS, or Calls Per Second! This will assign an 
-          # incremental delay on each api call. All api calls will be delivered to
+          # This variable sets the APICALLSPERSECOND, or API Calls Per Second! This  
+          # will assign incremental delay on each api call. All api calls will be delivered to
           # queue at the same time, but api calls will have different delays making
           # it so that api calls are available to be consumed by lambdas at a rate
-          # that matches the CPS set below. For example, setting the CPS to 5 means
-          # that 5 api calls will be available to be consumed in the queue every 5
+          # that matches the APICALLSPERSECOND set below. For example, setting the APICALLSPERSECOND
+          #  to 5 means that 5 api calls will be available to be consumed in the queue every 5
           # seconds. Per the MaximumConcurrency setting in TwilioMakeAPICallFunction
           # lambda, there will be 5 lambdas waiting to consume those api calls so 
           # api calls are consumed immediately.
           ##########################################################################            
-          CPS: !Ref 'CPS'    
+          APICALLSPERSECOND: !Ref 'APICALLSPERSECOND'    
           STATE_MACHINE_ARN: !Ref "StateMachineProcessFiles15MinIncrements"        
       Events:
         FileUpload:
@@ -298,17 +298,17 @@ Resources:
           ##########################################################################
           # KEY SETTING ALERT!!!!          
           #                          
-          # This variable set the CPS, or Calls Per Second! This will assign an 
-          # incremental delay on each api call. All api calls will be delivered to
+          # This variable sets the APICALLSPERSECOND, or API Calls Per Second! This  
+          # will assign incremental delay on each api call. All api calls will be delivered to
           # queue at the same time, but api calls will have different delays making
           # it so that api calls are available to be consumed by lambdas at a rate
-          # that matches the CPS set below. For example, setting the CPS to 5 means
-          # that 5 api calls will be available to be consumed in the queue every 5
+          # that matches the APICALLSPERSECOND set below. For example, setting the APICALLSPERSECOND
+          #  to 5 means that 5 api calls will be available to be consumed in the queue every 5
           # seconds. Per the MaximumConcurrency setting in TwilioMakeAPICallFunction
           # lambda, there will be 5 lambdas waiting to consume those api calls so 
-          # api calls are consumed immediately.          
+          # api calls are consumed immediately.       
           ##########################################################################            
-          CPS: !Ref 'CPS'    
+          APICALLSPERSECOND: !Ref 'APICALLSPERSECOND'    
           STATE_MACHINE_ARN: !Ref "StateMachineProcessFiles15MinIncrements"        
       Events:
         FileUpload:
@@ -516,14 +516,14 @@ Resources:
             # This is the maximum number of lambdas that can run 
             # concurrently when invoked by this SQS trigger.
             #
-            # The Maximum concurrency should match the desired CPS!
+            # The Maximum concurrency should match the desired APICALLSPERSECOND!
             # 1 lambda will handle 1 SQS message at a time (BatchSize: 1)
             # Lambdas will pull SQS messages at the same rate that they 
             # are delivered to the SQS queue.
             #
             ##########################################################            
             ScalingConfig:
-              MaximumConcurrency: !Ref 'CPS'            
+              MaximumConcurrency: !Ref 'APICALLSPERSECOND'            
       Policies:
         - SNSPublishMessagePolicy:
             TopicName: !GetAtt TwilioAPICallResponseTopic.TopicName

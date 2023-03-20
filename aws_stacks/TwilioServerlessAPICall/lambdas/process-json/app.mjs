@@ -5,7 +5,7 @@
  * bucket. The JSON file should contain an array of message objects with params
  * needed to call the twilio api. This function reads the file,  
  * calculates the delays and number of files to match configured
- * CPS, then saves the file(s) to the HOLDING bucket and lastly
+ * APICALLSPERSECOND, then saves the file(s) to the HOLDING bucket and lastly
  * triggers the STEP FUNCTION to manage the timing of the processing
  * of the files.
  * 
@@ -53,10 +53,10 @@ async function parseAndSaveFileToHoldingBucket( messages, index, filename ) {
     // KEY SETTING ALERT! Math to add a delay to process messages
     // in 15 minute batches below.     
     // Add delay for each line to control throughput
-    // Take ceiling (round up) of array index / CPS    
+    // Take ceiling (round up) of array index / APICALLSPERSECOND    
     messages = messages.map( (message, index) => ({
         ...message,
-        DelaySeconds: Math.ceil( (index+1) / parseInt(process.env.CPS) ) 
+        DelaySeconds: Math.ceil( (index+1) / parseInt(process.env.APICALLSPERSECOND) ) 
     }));
 
     //console.log("messages => ", messages);
@@ -96,12 +96,12 @@ export const lambdaHandler = async (event, context) => {
 
     let messages = await getJsonMessagesArray(event.Records[0]);
 
-    // This the Messages Per Second rate set in the yaml template!
-    let cps = parseInt(process.env.CPS);    
+    // This is the API Calls Per Second rate set in the yaml template!
+    let acps = parseInt(process.env.APICALLSPERSECOND);    
 
     console.log("messages.length => ", messages.length);    
 
-    let messagesPer15Minutes = cps * 900;
+    let messagesPer15Minutes = acps * 900;
 
     console.log("messagesPer15Minutes => ", messagesPer15Minutes);    
 
