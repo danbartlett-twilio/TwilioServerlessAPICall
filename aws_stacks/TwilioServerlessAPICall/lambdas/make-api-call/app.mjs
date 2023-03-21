@@ -76,7 +76,10 @@ async function processMessage(message) {
 
      // URL to Twilio endpoint. Default is MESSAGING API    
      let url = `https://api.twilio.com/2010-04-01/Accounts/${process.env.ACCOUNT_SID}/Messages.json`;
-    
+
+     let method = 'POST';
+     let body = querystring.encode(msg);
+
      /* POSSIBLE IMPLEMENTATION USING MULTIPLE ENDPOINTS...
      // Pass in an "api" param 
      
@@ -84,10 +87,15 @@ async function processMessage(message) {
          switch (m.api) {
              case "lookup":
                  url = `https://lookups.twilio.com/v2/PhoneNumbers/${m.To}`;
+                 method = 'GET';
+                 body = null;
                  break;
              case "studio":
                  url = `https://studio.twilio.com/v2/Flows/${m.Flow}/Executions`;
-                 break;                
+                 break;  
+             case "verify":
+                 url = `https://verify.twilio.com/v2/Services/${m.VerifyService}/Verifications`;
+                 break;                                 
              default:
                  // Messaging API set as default already
                  break;
@@ -113,7 +121,7 @@ async function processMessage(message) {
     try {
 
         // Use native "fetch" to call Twilio
-        await fetch(url, { method: "POST", headers: headers, body: querystring.encode(msg) })
+        await fetch(url, { method: method, headers: headers, body: body })        
             .then(function(response) {
                 twilioResponse.status = response.status;
                 return response.json();
